@@ -83,6 +83,8 @@ jobs:
       - name: 📁 Prepare Deployment Files
         run: |
           # Copy deployment files to app directory (self-hosted runner is already on server)
+          # Note: Use $HOME instead of ~ to ensure proper path expansion
+          APP_DIR="$HOME/aurigraph-website"
           mkdir -p $APP_DIR
           mkdir -p $APP_DIR/scripts
 
@@ -94,6 +96,9 @@ jobs:
 
           echo "✅ Files copied successfully"
           ls -la $APP_DIR/
+
+          # Export APP_DIR for next step
+          echo "APP_DIR=$APP_DIR" >> $GITHUB_ENV
 
       - name: 🚀 Deploy to Production (Direct Execution)
         run: |
@@ -112,8 +117,12 @@ jobs:
           echo "🛑 Stopping old containers..."
           docker compose -f docker-compose.production.yml down --volumes 2>/dev/null || true
 
+          # Aggressive cleanup: force remove any remaining containers
+          echo "🧹 Force removing stray containers..."
+          docker ps -a -q | xargs docker rm -f 2>/dev/null || true
+
           echo "⏳ Waiting for ports to be released..."
-          sleep 3
+          sleep 5
 
           echo "🚀 Starting containers..."
           DB_PASSWORD="$DB_PASSWORD" \
@@ -141,9 +150,7 @@ jobs:
         run: |
           echo "🎉 Deployment completed successfully!"
           echo "Services running on aurigraph.io:"
-          docker compose -f $APP_DIR/docker-compose.production.yml ps
-        env:
-          APP_DIR: ~/aurigraph-website
+          docker compose -f "${{ env.APP_DIR }}/docker-compose.production.yml" ps
 
       - name: 🎉 Deployment Success
         if: success()
