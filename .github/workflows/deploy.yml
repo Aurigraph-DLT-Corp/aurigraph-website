@@ -196,8 +196,41 @@ jobs:
             --restart always \
             postgres:16-alpine
 
-          echo "⏳ Waiting for database to be ready (30 seconds)..."
-          sleep 30
+          echo "⏳ Waiting for database to be ready..."
+          # Active health check instead of fixed sleep - reduces race window
+          for i in {1..20}; do
+            if docker exec aurigraph-db pg_isready -U aurigraph >/dev/null 2>&1; then
+              echo "✓ Database is ready"
+              break
+            fi
+            echo "⏳ Database not ready yet (attempt $i/20)..."
+            sleep 1.5
+          done
+
+          # PRE-FLIGHT: Aggressive port 3000 check immediately before app container
+          echo "🔍 PRE-FLIGHT CHECK: Port 3000 status before app container start..."
+          if netstat -tlnp 2>/dev/null | grep -q ":3000 "; then
+            echo "⚠️⚠️ RACE CONDITION DETECTED: Port 3000 IS IN USE - investigating..."
+            echo "🔍 Detailed port 3000 status:"
+            netstat -tlnp 2>/dev/null | grep ":3000" || true
+            echo "🔍 Process list for port 3000:"
+            lsof -i :3000 2>/dev/null || netstat -tlnp 2>/dev/null | grep ":3000" || true
+            echo "🔍 Docker containers status:"
+            docker ps --all || true
+            echo "🔍 All processes listening on ports 3000-3010:"
+            netstat -tlnp 2>/dev/null | grep -E ":(3000|3001|3002|3003|3004|3005|3006|3007|3008|3009|3010)" || true
+
+            # Kill anything using port 3000
+            echo "🧹 Force killing anything on port 3000..."
+            PIDS=$(lsof -Pi :3000 -sTCP:LISTEN -t 2>/dev/null || true)
+            if [ ! -z "$PIDS" ]; then
+              echo "Killing PIDs: $PIDS"
+              echo "$PIDS" | xargs kill -9 2>/dev/null || true
+              sleep 3
+            fi
+          else
+            echo "✓ Port 3000 confirmed free for app container"
+          fi
 
           echo "🚀 Starting Next.js app container..."
           docker run -d \
