@@ -131,12 +131,46 @@ jobs:
           echo "🧹 Removing unused volumes..."
           docker volume prune -af 2>/dev/null || true
 
-          # Nuclear option: restart docker daemon to release all ports
+        # Nuclear option: restart docker daemon to release all ports
           echo "🔄 Restarting Docker daemon..."
           sudo systemctl restart docker 2>/dev/null || sudo service docker restart 2>/dev/null || true
 
-          echo "⏳ Waiting for Docker and ports to be fully released..."
-          sleep 20
+          echo "⏳ Waiting for Docker daemon to fully restart..."
+          sleep 10
+
+          # Flush iptables rules related to port 3000 (Docker uses iptables for port mapping)
+          echo "🔄 Flushing iptables rules for port 3000..."
+          sudo iptables -t nat -F DOCKER 2>/dev/null || true
+          sudo iptables -t filter -F DOCKER 2>/dev/null || true
+          sudo iptables -t nat -F DOCKER-INGRESS 2>/dev/null || true
+          sleep 5
+
+          # Additional wait for Docker socket to be fully available
+          echo "⏳ Waiting for Docker socket to be ready..."
+          sleep 10
+
+          # Check if Docker is responsive
+          echo "🔍 Testing Docker daemon responsiveness..."
+          for i in {1..10}; do
+            if docker ps >/dev/null 2>&1; then
+              echo "✓ Docker daemon is responsive"
+              break
+            fi
+            echo "⏳ Waiting for Docker... (attempt $i/10)"
+            sleep 2
+          done
+
+          # Additional check: kill any stray process listening on port 3000
+          echo "🔍 Checking for stray processes on port 3000..."
+          if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
+            echo "⚠️  Found process listening on port 3000, killing it..."
+            lsof -Pi :3000 -sTCP:LISTEN -t | xargs kill -9 2>/dev/null || true
+            sleep 2
+          fi
+
+          # Final check with netstat
+          echo "🔍 Final check with netstat..."
+          netstat -tlnp 2>/dev/null | grep 3000 || echo "✓ Port 3000 is free"
 
           echo "🚀 Starting containers..."
           DB_PASSWORD="$DB_PASSWORD" \
