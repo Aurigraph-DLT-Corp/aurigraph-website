@@ -165,16 +165,55 @@ jobs:
             fi
           done
 
-          echo "🚀 Starting containers..."
-          DB_PASSWORD="$DB_PASSWORD" \
-          NEXTAUTH_SECRET="$NEXTAUTH_SECRET" \
-          docker compose -f docker-compose.production.yml up -d
+          echo "🚀 Creating Docker network..."
+          docker network create aurigraph-network 2>/dev/null || true
 
-          echo "⏳ Waiting for services to be healthy..."
-          sleep 5
+          echo "🚀 Starting database container..."
+          docker run -d \
+            --name aurigraph-db \
+            --network aurigraph-network \
+            -e POSTGRES_USER=aurigraph \
+            -e "POSTGRES_PASSWORD=$DB_PASSWORD" \
+            -e POSTGRES_DB=aurigraph_website \
+            -p 5432:5432 \
+            -v aurigraph-db_data:/var/lib/postgresql/data \
+            --restart always \
+            postgres:16-alpine
+
+          echo "⏳ Waiting for database to be ready (30 seconds)..."
+          sleep 30
+
+          echo "🚀 Starting Next.js app container..."
+          docker run -d \
+            --name aurigraph-website \
+            --network aurigraph-network \
+            -e NODE_ENV=production \
+            -e "DATABASE_URL=postgresql://aurigraph:$DB_PASSWORD@aurigraph-db:5432/aurigraph_website" \
+            -e NEXTAUTH_URL=https://aurigraph.io \
+            -e "NEXTAUTH_SECRET=$NEXTAUTH_SECRET" \
+            -p 3000:3000 \
+            --restart always \
+            ghcr.io/aurigraph-dlt-corp/aurigraph-website:latest
+
+          echo "⏳ Waiting for app to start (10 seconds)..."
+          sleep 10
+
+          echo "🚀 Starting NGINX reverse proxy..."
+          docker run -d \
+            --name aurigraph-nginx \
+            --network aurigraph-network \
+            -p 80:80 \
+            -p 443:443 \
+            -v $APP_DIR/nginx.conf:/etc/nginx/nginx.conf:ro \
+            -v /etc/letsencrypt:/etc/letsencrypt:ro \
+            --restart always \
+            nginx:alpine
+
+          echo "⏳ Waiting for services to stabilize (10 seconds)..."
+          sleep 10
 
           echo "✅ Verifying containers..."
-          docker compose -f docker-compose.production.yml ps
+          docker ps --filter network=aurigraph-network
 
           echo "=== DEPLOYMENT COMPLETED ==="
         env:
