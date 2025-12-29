@@ -61,7 +61,13 @@ jobs:
           SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_rsa
+
+          # Use ssh-agent to load the key
+          eval "$(ssh-agent -s)"
+          echo "$SSH_KEY" | ssh-add -
+
+          # Also write to file for git operations
+          echo "$SSH_KEY" | tr '\\n' '\n' > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
           # Add GitHub to known_hosts for SSH git operations
@@ -69,6 +75,9 @@ jobs:
 
           # Add aurigraph.io server to known_hosts
           ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          # Verify key is loaded
+          ssh-add -l || echo "Warning: ssh-add failed"
 
       - name: ✅ Checkout code (via SSH)
         run: |
