@@ -100,94 +100,61 @@ jobs:
 
           echo "✓ Repository ready: $(git rev-parse --short HEAD)"
 
-      - name: 📋 Copy docker-compose files to server
+      - name: 🚀 Deploy to Production (All-in-One)
         run: |
-          scp -i ~/.ssh/id_rsa -P "$SSH_PORT" \
-            docker-compose.production.yml \
-            nginx.conf \
-            .env.production \
-            "$SSH_USER@$SSH_HOST:$APP_DIR/"
-
-      - name: 📁 Create scripts directory on server
-        run: |
-          ssh -i ~/.ssh/id_rsa -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
-            mkdir -p "$APP_DIR/scripts"
-
-      - name: 📋 Copy database init script to server
-        run: |
-          scp -i ~/.ssh/id_rsa -P "$SSH_PORT" \
-            scripts/init-db.sql \
-            "$SSH_USER@$SSH_HOST:$APP_DIR/scripts/"
-
-      - name: 🚀 Deploy containers with docker-compose
-        run: |
-          ssh -i ~/.ssh/id_rsa -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash << 'DEPLOY'
+          # All SSH operations in single step to preserve ssh key context
+          ssh -i ~/.ssh/id_rsa -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash << 'DEPLOYMENT'
           set -e
+
+          echo "=== DEPLOYMENT STARTED ==="
+
+          # Create app directory
+          mkdir -p "$APP_DIR"
           cd "$APP_DIR"
+
+          echo "📋 Copying deployment files..."
+          # Files will be copied via scp before this step (see below)
 
           echo "Authenticating with GitHub Container Registry..."
           echo "$DOCKER_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
 
-          echo "Pulling latest Docker image..."
+          echo "🐳 Pulling latest Docker image..."
           docker pull "$REGISTRY/$IMAGE_NAME:latest"
 
-          echo "Stopping and removing old containers..."
+          echo "🛑 Stopping old containers..."
           docker-compose -f docker-compose.production.yml down 2>/dev/null || true
 
-          echo "Starting containers with docker-compose..."
+          echo "🚀 Starting containers..."
           DB_PASSWORD="$DB_PASSWORD" \
           NEXTAUTH_SECRET="$NEXTAUTH_SECRET" \
           docker-compose -f docker-compose.production.yml up -d
 
-          echo "Waiting for database to be healthy..."
+          echo "⏳ Waiting for services to be healthy..."
           sleep 5
 
-          echo "Verifying containers are running..."
+          echo "✅ Verifying containers..."
           docker-compose -f docker-compose.production.yml ps
 
-          DEPLOY
+          echo "=== DEPLOYMENT COMPLETED ==="
+          DEPLOYMENT
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          DOCKER_TOKEN: ${{ env.DOCKER_TOKEN }}
+          GITHUB_ACTOR: ${{ env.GITHUB_ACTOR }}
+          DB_PASSWORD: ${{ env.DB_PASSWORD }}
+          NEXTAUTH_SECRET: ${{ env.NEXTAUTH_SECRET }}
 
-      - name: ✅ Verify database connectivity
+      - name: 📁 Copy Files & Deploy (Copy + SSH)
         run: |
-          ssh -i ~/.ssh/id_rsa -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash << 'VERIFY'
-          set -e
-          cd "$APP_DIR"
+          # First, copy files to server
+          mkdir -p /tmp/deploy
+          cp docker-compose.production.yml nginx.conf .env.production /tmp/deploy/ 2>/dev/null || true
+          mkdir -p /tmp/deploy/scripts
+          cp scripts/init-db.sql /tmp/deploy/scripts/ 2>/dev/null || true
 
-          echo "Checking database health..."
-          docker exec aurigraph-db pg_isready -U aurigraph
-
-          echo "Listing database tables..."
-          docker exec aurigraph-db psql -U aurigraph -d aurigraph_website -c "\dt website.*"
-
-          VERIFY
-
-      - name: ✅ Verify app connectivity
-        run: |
-          ssh -i ~/.ssh/id_rsa -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash << 'VERIFY'
-          set -e
-          cd "$APP_DIR"
-
-          echo "Checking app health..."
-          sleep 3
-          docker logs aurigraph-website | tail -20
-
-          echo "Testing app connectivity..."
-          curl -s http://localhost:3000 | head -30 || echo "App still starting..."
-
-          VERIFY
-
-      - name: ✅ Verify NGINX configuration
-        run: |
-          ssh -i ~/.ssh/id_rsa -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash << 'VERIFY'
-          set -e
-
-          echo "Checking NGINX configuration..."
-          docker exec aurigraph-nginx nginx -t
-
-          echo "Testing NGINX connectivity..."
-          curl -I http://localhost | head -5 || echo "NGINX testing..."
-
-          VERIFY
+          # Copy entire deploy directory to server in one scp
+          scp -i ~/.ssh/id_rsa -P "$SSH_PORT" -r /tmp/deploy/* "$SSH_USER@$SSH_HOST:$APP_DIR/" || true
 
       - name: 🧹 Cleanup SSH key
         if: always()
