@@ -53,19 +53,27 @@ jobs:
       NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
       DOCKER_TOKEN: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
       GITHUB_ACTOR: ${{ github.actor }}
+      GIT_REPO: git@github.com:Aurigraph-DLT-Corp/aurigraph-website.git
 
     steps:
-      - name: ✅ Checkout code
-        uses: actions/checkout@v4
-
-      - name: 📤 Configure SSH
+      - name: 📤 Configure SSH for GitHub & Server
         env:
           SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+
+          # Add GitHub to known_hosts for SSH git operations
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          # Add aurigraph.io server to known_hosts
           ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: ✅ Checkout code (via SSH)
+        run: |
+          git clone "$GIT_REPO" .
+          git checkout "$GITHUB_SHA"
 
       - name: 📋 Copy docker-compose files to server
         run: |
