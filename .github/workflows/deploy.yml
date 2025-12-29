@@ -121,12 +121,18 @@ jobs:
           echo "🧹 System cleanup: removing all unused Docker resources..."
           docker system prune -af 2>/dev/null || true
 
-          # Force remove any remaining containers (just in case)
+          # Force remove any remaining containers, networks, volumes
           echo "🧹 Force removing any remaining containers..."
           docker ps -a -q | xargs docker rm -f 2>/dev/null || true
 
+          echo "🧹 Removing unused networks..."
+          docker network prune -af 2>/dev/null || true
+
+          echo "🧹 Removing unused volumes..."
+          docker volume prune -af 2>/dev/null || true
+
           echo "⏳ Waiting for ports to be released..."
-          sleep 10
+          sleep 15
 
           echo "🚀 Starting containers..."
           DB_PASSWORD="$DB_PASSWORD" \
