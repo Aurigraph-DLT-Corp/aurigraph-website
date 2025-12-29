@@ -56,31 +56,11 @@ jobs:
       GITHUB_ACTOR: ${{ github.actor }}
 
     steps:
-      - name: 📤 Configure Git & SSH for Server Access
-        env:
-          SERVER_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: ⚙️ Configure Git for Deployment
         run: |
-          mkdir -p ~/.ssh
           git config --global user.email "deployment@aurigraph.io"
           git config --global user.name "Aurigraph Deployment"
-
-          # Write server SSH key (unquoted HEREDOC to allow variable expansion)
-          cat > ~/.ssh/id_rsa << SSHKEY
-          $SERVER_SSH_KEY
-          SSHKEY
-          chmod 600 ~/.ssh/id_rsa
-
-          # Verify SSH key was written
-          if [ -s ~/.ssh/id_rsa ]; then
-            echo "✓ SSH key written successfully"
-            head -1 ~/.ssh/id_rsa
-          else
-            echo "✗ SSH key file is empty!"
-            exit 1
-          fi
-
-          # Add server to known_hosts
-          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          echo "✓ Git configured"
 
       - name: ✅ Checkout code (via HTTPS)
         run: |
@@ -100,20 +80,28 @@ jobs:
 
           echo "✓ Repository ready: $(git rev-parse --short HEAD)"
 
-      - name: 🚀 Deploy to Production (All-in-One)
+      - name: 📁 Prepare Deployment Files
         run: |
-          # All SSH operations in single step to preserve ssh key context
-          ssh -i ~/.ssh/id_rsa -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash << 'DEPLOYMENT'
+          # Copy deployment files to app directory (self-hosted runner is already on server)
+          mkdir -p $APP_DIR
+          mkdir -p $APP_DIR/scripts
+
+          echo "📋 Copying deployment files to $APP_DIR..."
+          cp docker-compose.production.yml $APP_DIR/ 2>/dev/null || true
+          cp nginx.conf $APP_DIR/ 2>/dev/null || true
+          cp .env.production $APP_DIR/ 2>/dev/null || true
+          cp scripts/init-db.sql $APP_DIR/scripts/ 2>/dev/null || true
+
+          echo "✅ Files copied successfully"
+          ls -la $APP_DIR/
+
+      - name: 🚀 Deploy to Production (Direct Execution)
+        run: |
+          # Since self-hosted runner is on the server, run docker commands directly
+          cd $APP_DIR
           set -e
 
           echo "=== DEPLOYMENT STARTED ==="
-
-          # Create app directory
-          mkdir -p "$APP_DIR"
-          cd "$APP_DIR"
-
-          echo "📋 Copying deployment files..."
-          # Files will be copied via scp before this step (see below)
 
           echo "Authenticating with GitHub Container Registry..."
           echo "$DOCKER_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
@@ -136,7 +124,6 @@ jobs:
           docker-compose -f docker-compose.production.yml ps
 
           echo "=== DEPLOYMENT COMPLETED ==="
-          DEPLOYMENT
         env:
           REGISTRY: ${{ env.REGISTRY }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
@@ -144,21 +131,16 @@ jobs:
           GITHUB_ACTOR: ${{ env.GITHUB_ACTOR }}
           DB_PASSWORD: ${{ env.DB_PASSWORD }}
           NEXTAUTH_SECRET: ${{ env.NEXTAUTH_SECRET }}
+          APP_DIR: ~/aurigraph-website
 
-      - name: 📁 Copy Files & Deploy (Copy + SSH)
+      - name: ✅ Verify Deployment Success
+        if: success()
         run: |
-          # First, copy files to server
-          mkdir -p /tmp/deploy
-          cp docker-compose.production.yml nginx.conf .env.production /tmp/deploy/ 2>/dev/null || true
-          mkdir -p /tmp/deploy/scripts
-          cp scripts/init-db.sql /tmp/deploy/scripts/ 2>/dev/null || true
-
-          # Copy entire deploy directory to server in one scp
-          scp -i ~/.ssh/id_rsa -P "$SSH_PORT" -r /tmp/deploy/* "$SSH_USER@$SSH_HOST:$APP_DIR/" || true
-
-      - name: 🧹 Cleanup SSH key
-        if: always()
-        run: rm -f ~/.ssh/id_rsa
+          echo "🎉 Deployment completed successfully!"
+          echo "Services running on aurigraph.io:"
+          docker-compose -f $APP_DIR/docker-compose.production.yml ps
+        env:
+          APP_DIR: ~/aurigraph-website
 
       - name: 🎉 Deployment Success
         if: success()
