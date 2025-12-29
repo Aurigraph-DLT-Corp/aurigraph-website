@@ -1,0 +1,38 @@
+{
+  "name": "aurigraph-website",
+  "version": "1.0.0",
+  "description": "Aurigraph.io website with Docker, PostgreSQL, and HubSpot CRM integration",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "jest"
+  },
+  "dependencies": {
+    "next": "^14.0.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "axios": "^1.6.5",
+    "pg": "^8.11.3",
+    "next-auth": "^4.24.5",
+    "@sendgrid/mail": "^8.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "@types/react": "^18.2.45",
+    "@types/react-dom": "^18.2.18",
+    "typescript": "^5.3.3",
+    "tailwindcss": "^3.4.0",
+    "postcss": "^8.4.32",
+    "autoprefixer": "^10.4.16",
+    "jest": "^29.7.0",
+    "@testing-library/react": "^14.1.2",
+    "@testing-library/jest-dom": "^6.1.5"
+  },
+  "engines": {
+    "node": ">=21.0.0",
+    "npm": ">=10.0.0"
+  }
+}
