@@ -64,11 +64,20 @@ jobs:
           git config --global user.email "deployment@aurigraph.io"
           git config --global user.name "Aurigraph Deployment"
 
-          # Write server SSH key
-          cat > ~/.ssh/id_rsa << 'SSHKEY'
-          ${{ secrets.SSH_PRIVATE_KEY }}
+          # Write server SSH key (unquoted HEREDOC to allow variable expansion)
+          cat > ~/.ssh/id_rsa << SSHKEY
+          $SERVER_SSH_KEY
           SSHKEY
           chmod 600 ~/.ssh/id_rsa
+
+          # Verify SSH key was written
+          if [ -s ~/.ssh/id_rsa ]; then
+            echo "✓ SSH key written successfully"
+            head -1 ~/.ssh/id_rsa
+          else
+            echo "✗ SSH key file is empty!"
+            exit 1
+          fi
 
           # Add server to known_hosts
           ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
