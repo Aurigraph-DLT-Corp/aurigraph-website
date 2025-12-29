@@ -147,7 +147,6 @@ jobs:
           GITHUB_ACTOR: ${{ env.GITHUB_ACTOR }}
           DB_PASSWORD: ${{ env.DB_PASSWORD }}
           NEXTAUTH_SECRET: ${{ env.NEXTAUTH_SECRET }}
-          APP_DIR: ~/aurigraph-website
 
       - name: ✅ Verify Deployment Success
         if: success()
