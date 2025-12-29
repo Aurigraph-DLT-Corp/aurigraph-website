@@ -251,8 +251,8 @@ jobs:
           docker run -d \
             --name aurigraph-nginx \
             --network aurigraph-network \
-            -p 80:80 \
-            -p 443:443 \
+            -p 8081:80 \
+            -p 8443:443 \
             -v $APP_DIR/nginx.conf:/etc/nginx/nginx.conf:ro \
             -v /etc/letsencrypt:/etc/letsencrypt:ro \
             --restart always \
