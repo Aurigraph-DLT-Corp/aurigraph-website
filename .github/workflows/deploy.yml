@@ -165,6 +165,22 @@ jobs:
             fi
           done
 
+          echo "🔄 Restarting Docker daemon for clean internal state..."
+          sudo systemctl restart docker 2>/dev/null || sudo service docker restart 2>/dev/null || true
+          echo "⏳ Waiting for Docker to fully restart (15 seconds)..."
+          sleep 15
+
+          # Verify Docker is responsive
+          echo "🔍 Verifying Docker is responsive..."
+          for i in {1..10}; do
+            if docker ps >/dev/null 2>&1; then
+              echo "✓ Docker daemon is responsive"
+              break
+            fi
+            echo "⏳ Waiting for Docker... (attempt $i/10)"
+            sleep 2
+          done
+
           echo "🚀 Creating Docker network..."
           docker network create aurigraph-network 2>/dev/null || true
 
