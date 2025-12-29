@@ -110,18 +110,18 @@ jobs:
           docker pull "$REGISTRY/$IMAGE_NAME:latest"
 
           echo "🛑 Stopping old containers..."
-          docker-compose -f docker-compose.production.yml down 2>/dev/null || true
+          docker compose -f docker-compose.production.yml down 2>/dev/null || true
 
           echo "🚀 Starting containers..."
           DB_PASSWORD="$DB_PASSWORD" \
           NEXTAUTH_SECRET="$NEXTAUTH_SECRET" \
-          docker-compose -f docker-compose.production.yml up -d
+          docker compose -f docker-compose.production.yml up -d
 
           echo "⏳ Waiting for services to be healthy..."
           sleep 5
 
           echo "✅ Verifying containers..."
-          docker-compose -f docker-compose.production.yml ps
+          docker compose -f docker-compose.production.yml ps
 
           echo "=== DEPLOYMENT COMPLETED ==="
         env:
@@ -138,7 +138,7 @@ jobs:
         run: |
           echo "🎉 Deployment completed successfully!"
           echo "Services running on aurigraph.io:"
-          docker-compose -f $APP_DIR/docker-compose.production.yml ps
+          docker compose -f $APP_DIR/docker-compose.production.yml ps
         env:
           APP_DIR: ~/aurigraph-website
 
