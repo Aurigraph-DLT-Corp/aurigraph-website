@@ -12,6 +12,7 @@ env:
   SSH_HOST: aurigraph.io
   SSH_PORT: 22
   APP_DIR: ~/aurigraph-website
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
   build-and-push:
@@ -53,35 +54,28 @@ jobs:
       NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
       DOCKER_TOKEN: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
       GITHUB_ACTOR: ${{ github.actor }}
-      GIT_REPO: git@github.com:Aurigraph-DLT-Corp/aurigraph-website.git
 
     steps:
-      - name: 📤 Configure SSH for GitHub & Server
+      - name: 📤 Configure Git & SSH for Server Access
         env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SERVER_SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.ssh
+          git config --global user.email "deployment@aurigraph.io"
+          git config --global user.name "Aurigraph Deployment"
 
-          # Use ssh-agent to load the key
-          eval "$(ssh-agent -s)"
-          echo "$SSH_KEY" | ssh-add -
-
-          # Also write to file for git operations
-          echo "$SSH_KEY" | tr '\\n' '\n' > ~/.ssh/id_rsa
+          # Write server SSH key
+          cat > ~/.ssh/id_rsa << 'SSHKEY'
+          ${{ secrets.SSH_PRIVATE_KEY }}
+          SSHKEY
           chmod 600 ~/.ssh/id_rsa
 
-          # Add GitHub to known_hosts for SSH git operations
-          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null || true
-
-          # Add aurigraph.io server to known_hosts
+          # Add server to known_hosts
           ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-          # Verify key is loaded
-          ssh-add -l || echo "Warning: ssh-add failed"
-
-      - name: ✅ Checkout code (via SSH)
+      - name: ✅ Checkout code (via HTTPS)
         run: |
-          git clone "$GIT_REPO" .
+          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Aurigraph-DLT-Corp/aurigraph-website.git .
           git checkout "$GITHUB_SHA"
 
       - name: 📋 Copy docker-compose files to server
