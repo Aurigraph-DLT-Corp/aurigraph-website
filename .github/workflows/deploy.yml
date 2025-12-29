@@ -84,14 +84,21 @@ jobs:
 
       - name: ✅ Checkout code (via HTTPS)
         run: |
-          # Clear working directory to prepare for fresh clone
-          rm -rf ./* ./.github ./.gitignore 2>/dev/null || true
+          # Initialize git repo and pull latest code
+          if [ ! -d .git ]; then
+            echo "Initializing fresh repository..."
+            git init
+            git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Aurigraph-DLT-Corp/aurigraph-website.git
+            git fetch origin "$GITHUB_SHA"
+            git reset --hard "$GITHUB_SHA"
+          else
+            echo "Repository exists, pulling latest..."
+            git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Aurigraph-DLT-Corp/aurigraph-website.git
+            git fetch origin
+            git reset --hard "$GITHUB_SHA"
+          fi
 
-          # Clone repository
-          git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Aurigraph-DLT-Corp/aurigraph-website.git .
-          git checkout "$GITHUB_SHA"
-
-          echo "✓ Repository cloned and ready for deployment"
+          echo "✓ Repository ready: $(git rev-parse --short HEAD)"
 
       - name: 📋 Copy docker-compose files to server
         run: |
