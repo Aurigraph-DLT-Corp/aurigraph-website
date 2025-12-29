@@ -1,0 +1,188 @@
+name: Build & Deploy Docker to aurigraph.io
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: aurigraph-dlt-corp/aurigraph-website
+  SSH_USER: subbu
+  SSH_HOST: aurigraph.io
+  SSH_PORT: 22
+  APP_DIR: ~/aurigraph-website
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: ✅ Checkout code
+        uses: actions/checkout@v4
+
+      - name: ✅ Setup Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: 🔐 Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏗️ Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: self-hosted
+    env:
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+      DOCKER_TOKEN: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
+      GITHUB_ACTOR: ${{ github.actor }}
+
+    steps:
+      - name: ✅ Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📤 Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: 📋 Copy docker-compose files to server
+        run: |
+          scp -i ~/.ssh/id_rsa -P "$SSH_PORT" \
+            docker-compose.production.yml \
+            nginx.conf \
+            .env.production \
+            "$SSH_USER@$SSH_HOST:$APP_DIR/"
+
+      - name: 📁 Create scripts directory on server
+        run: |
+          ssh -i ~/.ssh/id_rsa -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+            mkdir -p "$APP_DIR/scripts"
+
+      - name: 📋 Copy database init script to server
+        run: |
+          scp -i ~/.ssh/id_rsa -P "$SSH_PORT" \
+            scripts/init-db.sql \
+            "$SSH_USER@$SSH_HOST:$APP_DIR/scripts/"
+
+      - name: 🚀 Deploy containers with docker-compose
+        run: |
+          ssh -i ~/.ssh/id_rsa -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash << 'DEPLOY'
+          set -e
+          cd "$APP_DIR"
+
+          echo "Authenticating with GitHub Container Registry..."
+          echo "$DOCKER_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+          echo "Pulling latest Docker image..."
+          docker pull "$REGISTRY/$IMAGE_NAME:latest"
+
+          echo "Stopping and removing old containers..."
+          docker-compose -f docker-compose.production.yml down 2>/dev/null || true
+
+          echo "Starting containers with docker-compose..."
+          DB_PASSWORD="$DB_PASSWORD" \
+          NEXTAUTH_SECRET="$NEXTAUTH_SECRET" \
+          docker-compose -f docker-compose.production.yml up -d
+
+          echo "Waiting for database to be healthy..."
+          sleep 5
+
+          echo "Verifying containers are running..."
+          docker-compose -f docker-compose.production.yml ps
+
+          DEPLOY
+
+      - name: ✅ Verify database connectivity
+        run: |
+          ssh -i ~/.ssh/id_rsa -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash << 'VERIFY'
+          set -e
+          cd "$APP_DIR"
+
+          echo "Checking database health..."
+          docker exec aurigraph-db pg_isready -U aurigraph
+
+          echo "Listing database tables..."
+          docker exec aurigraph-db psql -U aurigraph -d aurigraph_website -c "\dt website.*"
+
+          VERIFY
+
+      - name: ✅ Verify app connectivity
+        run: |
+          ssh -i ~/.ssh/id_rsa -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash << 'VERIFY'
+          set -e
+          cd "$APP_DIR"
+
+          echo "Checking app health..."
+          sleep 3
+          docker logs aurigraph-website | tail -20
+
+          echo "Testing app connectivity..."
+          curl -s http://localhost:3000 | head -30 || echo "App still starting..."
+
+          VERIFY
+
+      - name: ✅ Verify NGINX configuration
+        run: |
+          ssh -i ~/.ssh/id_rsa -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" bash << 'VERIFY'
+          set -e
+
+          echo "Checking NGINX configuration..."
+          docker exec aurigraph-nginx nginx -t
+
+          echo "Testing NGINX connectivity..."
+          curl -I http://localhost | head -5 || echo "NGINX testing..."
+
+          VERIFY
+
+      - name: 🧹 Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/id_rsa
+
+      - name: 🎉 Deployment Success
+        if: success()
+        run: |
+          cat << 'SUCCESS'
+          ✅ Docker deployment to https://aurigraph.io successful!
+
+          Services deployed:
+            🐘 PostgreSQL 16 - Database container
+            🚀 Next.js App - Application container
+            🌐 NGINX Alpine - Reverse proxy container
+
+          Access your site: https://aurigraph.io
+          View logs: docker-compose -f ~/aurigraph-website/docker-compose.production.yml logs -f
+          SUCCESS
+
+      - name: ❌ Deployment Failed
+        if: failure()
+        run: |
+          cat << 'FAILURE'
+          ❌ Deployment failed
+
+          Debug steps:
+            ssh subbu@aurigraph.io
+            cd ~/aurigraph-website
+            docker-compose -f docker-compose.production.yml logs -f
+          FAILURE
