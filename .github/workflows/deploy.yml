@@ -191,7 +191,7 @@ jobs:
             -e POSTGRES_USER=aurigraph \
             -e "POSTGRES_PASSWORD=$DB_PASSWORD" \
             -e POSTGRES_DB=aurigraph_website \
-            -p 5432:5432 \
+            -p 5433:5432 \
             -v aurigraph-db_data:/var/lib/postgresql/data \
             --restart always \
             postgres:16-alpine
