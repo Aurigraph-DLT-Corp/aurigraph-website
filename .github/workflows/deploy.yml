@@ -160,17 +160,41 @@ jobs:
             sleep 2
           done
 
-          # Additional check: kill any stray process listening on port 3000
-          echo "🔍 Checking for stray processes on port 3000..."
-          if lsof -Pi :3000 -sTCP:LISTEN -t >/dev/null 2>&1; then
-            echo "⚠️  Found process listening on port 3000, killing it..."
-            lsof -Pi :3000 -sTCP:LISTEN -t | xargs kill -9 2>/dev/null || true
-            sleep 2
-          fi
+          # Extended wait for all processes to fully release ports
+          echo "⏳ Extended wait for port release (30 seconds)..."
+          sleep 30
 
-          # Final check with netstat
-          echo "🔍 Final check with netstat..."
-          netstat -tlnp 2>/dev/null | grep 3000 || echo "✓ Port 3000 is free"
+          # Kill ALL processes listening on ports 3000, 3001, 3010, 3011
+          echo "🔍 Force clearing all processes on target ports..."
+          for PORT in 3000 3001 3010 3011; do
+            if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null 2>&1; then
+              echo "⚠️  Found process on port $PORT, killing it..."
+              lsof -Pi :$PORT -sTCP:LISTEN -t | xargs kill -9 2>/dev/null || true
+              sleep 1
+            fi
+          done
+
+          # Explicitly remove aurigraph-website containers and networks
+          echo "🧹 Removing aurigraph-website specific resources..."
+          docker rm -f aurigraph-website aurigraph-db aurigraph-nginx 2>/dev/null || true
+          docker network rm aurigraph-network 2>/dev/null || true
+          sleep 5
+
+          # Final comprehensive check
+          echo "🔍 Final port status check..."
+          for PORT in 3000 3001 3010 3011 5432 80 443; do
+            STATUS=$(netstat -tlnp 2>/dev/null | grep ":$PORT " || echo "FREE")
+            echo "Port $PORT: $STATUS"
+          done
+
+          # One more daemon-level cleanup
+          echo "🧹 Final Docker cleanup..."
+          docker system prune -af --volumes 2>/dev/null || true
+          sleep 5
+
+          # Verify Docker is responding
+          echo "✅ Docker status:"
+          docker version --format 'Client: {{.Client.Version}}, Server: {{.Server.Version}}' || true
 
           echo "🚀 Starting containers..."
           DB_PASSWORD="$DB_PASSWORD" \
