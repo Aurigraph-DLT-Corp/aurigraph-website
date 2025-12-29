@@ -131,8 +131,12 @@ jobs:
           echo "🧹 Removing unused volumes..."
           docker volume prune -af 2>/dev/null || true
 
-          echo "⏳ Waiting for ports to be released..."
-          sleep 15
+          # Nuclear option: restart docker daemon to release all ports
+          echo "🔄 Restarting Docker daemon..."
+          sudo systemctl restart docker 2>/dev/null || sudo service docker restart 2>/dev/null || true
+
+          echo "⏳ Waiting for Docker and ports to be fully released..."
+          sleep 20
 
           echo "🚀 Starting containers..."
           DB_PASSWORD="$DB_PASSWORD" \
