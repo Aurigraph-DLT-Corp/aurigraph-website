@@ -48,7 +48,7 @@ jobs:
 
   deploy:
     needs: build-and-push
-    runs-on: self-hosted
+    runs-on: [ self-hosted, aurigraph ]
     env:
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
