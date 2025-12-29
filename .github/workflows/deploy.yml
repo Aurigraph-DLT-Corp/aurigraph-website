@@ -117,12 +117,16 @@ jobs:
           echo "🛑 Stopping old containers..."
           docker compose -f docker-compose.production.yml down --volumes 2>/dev/null || true
 
-          # Aggressive cleanup: force remove any remaining containers
-          echo "🧹 Force removing stray containers..."
+          # Aggressive cleanup: system prune to remove all unused Docker resources
+          echo "🧹 System cleanup: removing all unused Docker resources..."
+          docker system prune -af 2>/dev/null || true
+
+          # Force remove any remaining containers (just in case)
+          echo "🧹 Force removing any remaining containers..."
           docker ps -a -q | xargs docker rm -f 2>/dev/null || true
 
           echo "⏳ Waiting for ports to be released..."
-          sleep 5
+          sleep 10
 
           echo "🚀 Starting containers..."
           DB_PASSWORD="$DB_PASSWORD" \
