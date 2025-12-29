@@ -110,7 +110,10 @@ jobs:
           docker pull "$REGISTRY/$IMAGE_NAME:latest"
 
           echo "🛑 Stopping old containers..."
-          docker compose -f docker-compose.production.yml down 2>/dev/null || true
+          docker compose -f docker-compose.production.yml down --volumes 2>/dev/null || true
+
+          echo "⏳ Waiting for ports to be released..."
+          sleep 3
 
           echo "🚀 Starting containers..."
           DB_PASSWORD="$DB_PASSWORD" \
