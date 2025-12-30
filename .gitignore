@@ -1,46 +1,34 @@
 # Dependencies
-node_modules
-.pnp
-.pnp.js
+node_modules/
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
 
-# Testing
-coverage
-
-# Next.js production
-.next
-out
-build
-
-# Misc
-.DS_Store
-*.pem
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env.production
-.env.*.local
-
-# Logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
-.pnpm-debug.log*
+# Production build
+dist/
+build/
+.next/
+out/
 
 # IDE
-.vscode
-.idea
+.idea/
+.vscode/
 *.swp
 *.swo
 *~
-.sublime-project
-.sublime-workspace
+.DS_Store
 
-# OS
-Thumbs.db
+# Environment
+.env
+.env.local
+.env.*.local
 
-# Cache
-.cache
-.eslintcache
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+
+# Temporary
+tmp/
+temp/
+*.bak
