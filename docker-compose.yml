@@ -10,7 +10,9 @@ services:
       - "8080:3000"
     environment:
       - NODE_ENV=development
-      - HUBSPOT_API_KEY=CiRuYTItN2JhMi1mMDg1LTQwMjctYWI2Yi05YmNiZDU2NDlmYjgQoJTTcxjqguwlKhkABeaRgickzwtOeJw2zbLXY1rZQvZpwdkaSgNuYTI
+      - HUBSPOT_API_KEY=${HUBSPOT_API_KEY}
+    env_file:
+      - .env.local
     volumes:
       - .:/app
       - /app/node_modules
