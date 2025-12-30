@@ -7,9 +7,10 @@ services:
       dockerfile: Dockerfile
     container_name: aurigraph-website-dev
     ports:
-      - "3000:3000"
+      - "8080:3000"
     environment:
       - NODE_ENV=development
+      - HUBSPOT_API_KEY=CiRuYTItN2JhMi1mMDg1LTQwMjctYWI2Yi05YmNiZDU2NDlmYjgQoJTTcxjqguwlKhkABeaRgickzwtOeJw2zbLXY1rZQvZpwdkaSgNuYTI
     volumes:
       - .:/app
       - /app/node_modules

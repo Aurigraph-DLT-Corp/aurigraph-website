@@ -1,0 +1,113 @@
+{
+  "epic": {
+    "project": "AV11",
+    "issueType": "Epic",
+    "summary": "HubSpot CRM Integration - Unified module for Aurigraph.io, V12, and future apps",
+    "description": "Production-ready HubSpot contact sync with retry protection, testing, and monitoring. Fixes 3 critical API bugs preventing production deployment. Enables form submissions to sync automatically to HubSpot CRM.\n\n**MVP Timeline:** 2-3 days (Days 1-4)\n- Fix 3 critical bugs in HubSpot API integration\n- Add timeout (10s) and retry (exponential backoff) protection\n- Create comprehensive test suite (≥80% coverage)\n- Deploy to production with 24-hour monitoring\n\n**Unified Module:** 7-9 days (Days 5-14)\n- Refactor HubSpot client into modular TypeScript library\n- Implement Java client for V12 platform with Mutiny/Quarkus\n- Create unified OpenAPI 3.1 specification\n- Setup Prometheus/Grafana monitoring and alerting\n\n**Success Criteria:**\n- 95%+ HubSpot sync success rate\n- <2s average sync time\n- Zero form submission failures\n- Automated retry recovering 100% of failures",
+    "priority": "Highest",
+    "labels": ["hubspot", "crm", "integration", "v12", "website"],
+    "components": ["HubSpot Integration", "Contact Form", "CRM"]
+  },
+  "tickets": [
+    {
+      "priority": 1,
+      "type": "Bug",
+      "summary": "Fix HubSpot API Payload Format Bug",
+      "description": "**Location:** lib/hubspot.ts lines 144-149, 190-196\n\n**Problem:** HubSpot v3 API requires flat object properties, not array with objectTypeId field.\n\n**Current (WRONG):**\n```typescript\nproperties: properties.map(p => ({\n  objectTypeId: '0-1',\n  name: p.property,\n  value: p.value,\n}))\n```\n\n**Fixed:**\n```typescript\nproperties: properties.reduce((acc, p) => ({\n  ...acc,\n  [p.property]: p.value,\n}), {})\n```\n\n**Impact:** Prevents contact creation/updates - returns 400 Bad Request on every sync attempt.\n\n**Acceptance Criteria:**\n- [ ] Fix payload format in createContact() function\n- [ ] Fix payload format in updateContact() function\n- [ ] Test with sample contact data\n- [ ] Verify API returns 201/200 (not 400 errors)",
+      "estimate": "2",
+      "status": "COMPLETED",
+      "labels": ["bug", "api", "blocking"],
+      "phase": "MVP Phase 1"
+    },
+    {
+      "priority": 2,
+      "type": "Bug",
+      "summary": "Fix HubSpot Contact Search Logic",
+      "description": "**Location:** lib/hubspot.ts lines 95-128\n\n**Problem:** Current search loads ALL contacts then filters in code. Inefficient, hits rate limits, slow.\n\n**Current (INEFFICIENT):**\n```\nGET /crm/v3/objects/contacts?limit=1&after=0&properties=email...\n```\n\n**Fixed (EFFICIENT):**\n```\nPOST /crm/v3/objects/contacts/search\nBody: {\n  filterGroups: [{\n    filters: [{\n      propertyName: \"email\",\n      operator: \"EQ\",\n      value: email\n    }]\n  }]\n}\n```\n\n**Impact:** Improves search performance from 100ms+ to <50ms. Eliminates rate limit issues.\n\n**Acceptance Criteria:**\n- [ ] Implement search API endpoint call\n- [ ] Verify single contact found by email\n- [ ] Test with non-existent email (returns empty)\n- [ ] Add error handling for malformed emails",
+      "estimate": "2",
+      "status": "COMPLETED",
+      "labels": ["bug", "performance", "api"],
+      "phase": "MVP Phase 1"
+    },
+    {
+      "priority": 2,
+      "type": "Task",
+      "summary": "Add Timeout & Retry Protection to HubSpot Client",
+      "description": "**Objective:** Prevent API calls from hanging indefinitely. Add automatic retry on transient failures.\n\n**Implementation:**\nCreate new file: `lib/hubspot-retry.ts`\n\n**Features:**\n- 10-second timeout for all API calls\n- Exponential backoff retry: 2s, 4s, 8s\n- Retryable errors: network (ECONNREFUSED, ETIMEDOUT), 429 (rate limit), 5xx (server)\n- Non-retryable errors: 400 (bad request), 401 (auth), 403 (forbidden), 404 (not found)\n- Detailed error logging with attempt numbers\n\n**Export Functions:**\n- `retryWithBackoff<T>(fn, options)` - Core retry wrapper with Promise.race for timeout\n- `fetchWithRetry(url, options?, retryOptions?)` - Convenience wrapper for fetch calls\n\n**Integration:**\nWrap all HubSpot fetch calls with `fetchWithRetry()`:\n- getContactByEmail()\n- createContact()\n- updateContact()\n- addContactToList()\n- createHubSpotDeal()\n- logActivityToHubSpot()\n\n**Acceptance Criteria:**\n- [ ] Create retry helper function with timeout\n- [ ] Wrap all HubSpot API calls with retry\n- [ ] Test timeout behavior (verify <10s response)\n- [ ] Test retry on transient failures\n- [ ] Add error logging with HubSpot error codes",
+      "estimate": "3",
+      "status": "COMPLETED",
+      "labels": ["infra", "reliability", "timeout"],
+      "phase": "MVP Phase 1"
+    },
+    {
+      "priority": 3,
+      "type": "Task",
+      "summary": "Add HUBSPOT_API_KEY Environment Variable",
+      "description": "**Objective:** Properly configure HubSpot API key in all environments.\n\n**Files to Update:**\n1. `.env.local` - Add HUBSPOT_API_KEY=<provided_key>\n2. `lib/hubspot.ts` - Load from process.env.HUBSPOT_API_KEY\n3. `docker-compose.yml` - Pass env var to container\n\n**Configuration:**\n```\nHUBSPOT_API_KEY=<api-key-from-hubspot-portal>\n```\n\n**Security:**\n- Never commit actual API keys\n- Use .gitignore to exclude .env.local\n- Use environment variables in CI/CD\n\n**Acceptance Criteria:**\n- [ ] Add HUBSPOT_API_KEY to .env.local\n- [ ] Update docker-compose to include env var\n- [ ] Verify API key is loaded in lib/hubspot.ts\n- [ ] Confirm no API key commits (.gitignore working)",
+      "estimate": "0.5",
+      "status": "COMPLETED",
+      "labels": ["config", "security"],
+      "phase": "MVP Phase 1"
+    },
+    {
+      "priority": 2,
+      "type": "Story",
+      "summary": "Create HubSpot Integration Test Endpoint",
+      "description": "**Objective:** Create endpoint to validate HubSpot integration works end-to-end.\n\n**Endpoint:** GET/POST /api/hubspot/test\n\n**GET Response (HTTP 200 on success):**\n```json\n{\n  \"status\": \"success\",\n  \"message\": \"HubSpot integration working\",\n  \"testContact\": {\n    \"email\": \"test-[timestamp]@aurigraph.io\",\n    \"firstName\": \"Test\",\n    \"lastName\": \"Contact\",\n    \"hubspotId\": \"12345\",\n    \"syncedAt\": \"2025-12-30T12:00:00Z\"\n  },\n  \"syncLog\": {\n    \"synced\": true,\n    \"timestamp\": \"2025-12-30T12:00:00Z\",\n    \"attempts\": 1\n  }\n}\n```\n\n**Error Responses:**\n- 401: Invalid or missing HUBSPOT_API_KEY\n- 500: HubSpot API error or sync failure\n\n**POST:** Custom test with email/firstName/lastName in body\n\n**Testing:**\nCreate unique test contacts (timestamp in email) and clean up after test.\n\n**Acceptance Criteria:**\n- [ ] Create /api/hubspot/test endpoint\n- [ ] Test creates contact in HubSpot\n- [ ] Verify contact syncs to PostgreSQL\n- [ ] Return appropriate success response\n- [ ] Test with invalid API key (returns 401)\n- [ ] Clean up test contacts after test",
+      "estimate": "2",
+      "status": "TODO",
+      "labels": ["test", "endpoint", "api"],
+      "phase": "MVP Phase 1"
+    },
+    {
+      "priority": 2,
+      "type": "Task",
+      "summary": "Create HubSpot Unit Test Suite",
+      "description": "**File:** `__tests__/hubspot.test.ts`\n\n**Target:** ≥80% code coverage\n\n**Test Categories:**\n\n1. **Contact Operations** (20% coverage)\n   - createContact: success, duplicate, invalid data\n   - updateContact: existing contact, non-existent\n   - searchContact: found, not found, invalid email\n\n2. **Retry Logic** (15% coverage)\n   - Success on first attempt\n   - Success after retry on transient failure\n   - Failure after max retries\n   - Timeout behavior (<10s response)\n\n3. **Error Handling** (20% coverage)\n   - Network errors (ECONNREFUSED, ETIMEDOUT)\n   - API errors (400, 401, 403, 404, 429, 5xx)\n   - Invalid API responses\n\n4. **Integration Paths** (15% coverage)\n   - Full sync flow: search → create/update\n   - Custom fields support\n   - Partial contact data\n\n5. **Helper Functions** (10% coverage)\n   - addContactToList\n   - createHubSpotDeal\n   - logActivityToHubSpot\n\n**Mock Strategy:**\nUse jest.fn() to mock fetch responses. Never call real HubSpot API in tests.\n\n**Acceptance Criteria:**\n- [ ] Create test file with all test cases\n- [ ] Achieve ≥80% code coverage (npm run test -- --coverage)\n- [ ] All tests passing (npm test)\n- [ ] Mock HubSpot API responses (no real API calls)\n- [ ] Test both success and failure paths",
+      "estimate": "4",
+      "status": "TODO",
+      "labels": ["test", "unit-tests", "coverage"],
+      "phase": "MVP Phase 2"
+    },
+    {
+      "priority": 2,
+      "type": "Task",
+      "summary": "Create HubSpot Integration Tests",
+      "description": "**File:** Integration tests using HubSpot sandbox account\n\n**Test Scenarios:**\n1. End-to-end contact form submission\n2. Verify contact created in HubSpot with correct data\n3. Verify contact persisted to PostgreSQL\n4. Analytics incrementing properly\n5. Error recovery on API failure\n6. Retry mechanism on transient failures\n\n**Test Procedure:**\n- Create test contact in sandbox HubSpot\n- Trigger form submission (or direct sync)\n- Verify contact appears in HubSpot portal\n- Query database sync_log table\n- Verify all fields synced correctly\n- Clean up test contacts\n\n**Error Scenarios to Test:**\n- Invalid HubSpot API key\n- HubSpot API down/503\n- Network timeout\n- Malformed response\n\n**Documentation:**\nCreate test procedures document for manual verification by QA.\n\n**Acceptance Criteria:**\n- [ ] Create integration test suite\n- [ ] Test against HubSpot sandbox\n- [ ] Verify all data fields synced correctly\n- [ ] Test error scenarios (API down, invalid key)\n- [ ] Document test procedures",
+      "estimate": "3",
+      "status": "TODO",
+      "labels": ["test", "integration", "e2e"],
+      "phase": "MVP Phase 2"
+    },
+    {
+      "priority": 2,
+      "type": "Story",
+      "summary": "Create HubSpot Stats Dashboard",
+      "description": "**Endpoint:** GET /api/admin/hubspot/stats\n\n**Response:**\n```json\n{\n  \"syncStats\": {\n    \"totalSynced\": 150,\n    \"successRate\": \"98.5%\",\n    \"failedSyncs\": 2,\n    \"lastSync\": \"2025-12-30T12:15:00Z\",\n    \"averageTime\": \"1.2s\"\n  },\n  \"queueStats\": {\n    \"pending\": 0,\n    \"failed\": 2,\n    \"retrying\": 0\n  },\n  \"errors\": [\n    {\n      \"email\": \"invalid@example.com\",\n      \"error\": \"Invalid email format\",\n      \"lastAttempt\": \"2025-12-30T12:00:00Z\",\n      \"attempts\": 3\n    }\n  ]\n}\n```\n\n**Features:**\n- Query hubspot_sync_log table for statistics\n- Calculate success rate percentage\n- List recent failed syncs with error details\n- Admin authentication check (JWT validation)\n- Optional email alerts for >10% failure rate\n\n**Database Schema:**\nExpect hubspot_sync_log table with columns:\n- email, success, error_message, last_attempt, retry_count, synced_at\n\n**Acceptance Criteria:**\n- [ ] Create stats endpoint\n- [ ] Query sync statistics from database\n- [ ] Calculate success rate percentage\n- [ ] List failed syncs with error details\n- [ ] Add admin authentication check",
+      "estimate": "3",
+      "status": "TODO",
+      "labels": ["monitoring", "admin", "dashboard"],
+      "phase": "MVP Phase 2"
+    },
+    {
+      "priority": 2,
+      "type": "Task",
+      "summary": "Create HubSpot Background Sync Queue",
+      "description": "**File:** `lib/hubspot-queue.ts`\n\n**Objective:** Automatically retry failed syncs without manual intervention.\n\n**Implementation:**\n1. Query hubspot_sync_log for failed entries (success=false)\n2. Retry with exponential backoff (2s → 4s → 8s → ...)\n3. Max retention: 24 hours before giving up\n4. Update retry count and last attempt timestamp\n5. Log results to console/logging service\n\n**Scheduling:**\nRun every 15 minutes via:\n- Option 1: node-cron job (npm install node-cron)\n- Option 2: Next.js route handler triggered by external scheduler\n- Option 3: Background task queue (Bull, RabbitMQ - future)\n\n**Retry Logic:**\n```\nAttempt 1: Immediate (first failure)\nAttempt 2: +2s\nAttempt 3: +4s (2^2)\nAttempt 4: +8s (2^3)\nAttempt 5: +16s (2^4)\n... continue up to 24 hour max\n```\n\n**Alerts:**\n- Log warning if retry count > 3\n- Optional: Alert if >10 failed syncs pending\n- Optionally send email/Slack to admin\n\n**Acceptance Criteria:**\n- [ ] Create queue system\n- [ ] Implement retry logic with max attempts\n- [ ] Add cron job (15 minute interval)\n- [ ] Test retry with failure injection\n- [ ] Verify database updates correctly\n- [ ] Monitor logs for retry activity",
+      "estimate": "3",
+      "status": "TODO",
+      "labels": ["infra", "queue", "retry"],
+      "phase": "MVP Phase 2"
+    },
+    {
+      "priority": 1,
+      "type": "Story",
+      "summary": "Deploy HubSpot Integration MVP to Production",
+      "description": "**Objective:** Deploy production-ready HubSpot integration with monitoring.\n\n**Pre-Deployment Checklist:**\n- [ ] All 3 critical bugs fixed and verified\n- [ ] Test suite passing (npm test)\n- [ ] ≥80% code coverage achieved\n- [ ] Code reviewed and approved\n- [ ] HUBSPOT_API_KEY configured in production .env\n\n**Deployment Steps:**\n1. Commit all changes to main branch\n2. GitHub Actions workflow runs:\n   - Build Next.js app\n   - Run test suite\n   - Build Docker image\n   - Push to registry\n3. Deploy to staging environment\n   - Run /api/hubspot/test endpoint\n   - Verify 200 response\n   - Test with sandbox contact\n4. Deploy to production\n   - Blue-green deployment (zero downtime)\n   - Monitor /api/admin/hubspot/stats endpoint\n   - Watch sync logs for errors\n5. Monitor for 24 hours\n   - Verify 95%+ sync success rate\n   - Check <2s average sync time\n   - Confirm zero form submission failures\n   - All contacts appearing in HubSpot\n\n**Rollback Plan:**\n- Remove HUBSPOT_API_KEY from env → forms work without sync\n- Or revert to previous commit via git/GitHub Actions\n\n**Success Metrics (After 24h):**\n- ✅ 95%+ sync success rate\n- ✅ <2s average sync time\n- ✅ Zero form submission failures\n- ✅ All contacts visible in HubSpot\n- ✅ No errors in logs\n\n**Acceptance Criteria:**\n- [ ] Verify tests passing\n- [ ] Deploy to staging first\n- [ ] Run smoke tests on staging\n- [ ] Deploy to production\n- [ ] Monitor 24 hours\n- [ ] Document deployment",
+      "estimate": "2",
+      "status": "TODO",
+      "labels": ["deploy", "production", "critical"],
+      "phase": "MVP Phase 3"
+    }
+  ]
+}

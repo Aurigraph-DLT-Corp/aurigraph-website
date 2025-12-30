@@ -1,0 +1,12 @@
+
+[0;34m════════════════════════════════════════════════════════════[0m
+[0;34m   Aurigraph HubSpot CRM Integration - Production Deploy[0m
+[0;34m════════════════════════════════════════════════════════════[0m
+
+[0;34m[INFO][0m Step 1: Pre-deployment checks...
+[0;34m[INFO][0m   - Verifying SSH connectivity to production server
+[0;32m[✓][0m SSH connectivity verified
+[0;34m[INFO][0m Step 2: Checking current deployment status...
+[0;32m[✓][0m Current active deployment:  → Next deployment: green
+[0;34m[INFO][0m Step 3: Pulling latest code from repository...
+bash: line 1: cd: /app/aurigraph-website: No such file or directory

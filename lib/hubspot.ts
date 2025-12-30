@@ -3,6 +3,8 @@
  * Syncs contact form submissions and user registrations to HubSpot
  */
 
+import { fetchWithRetry } from './hubspot-retry';
+
 interface HubSpotContact {
   email: string;
   firstName?: string;
@@ -90,21 +92,36 @@ export async function syncContactToHubSpot(
 }
 
 /**
- * Get contact by email
+ * Get contact by email (using efficient Search API)
  */
 async function getContactByEmail(
   email: string,
   apiKey: string
 ): Promise<HubSpotResponse | null> {
   try {
-    const response = await fetch(
-      `https://api.hubapi.com/crm/v3/objects/contacts?limit=1&after=0&properties=email&properties=firstname&properties=lastname&properties=company`,
+    const response = await fetchWithRetry(
+      'https://api.hubapi.com/crm/v3/objects/contacts/search',
       {
-        method: 'GET',
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
+        body: JSON.stringify({
+          filterGroups: [
+            {
+              filters: [
+                {
+                  propertyName: 'email',
+                  operator: 'EQ',
+                  value: email,
+                },
+              ],
+            },
+          ],
+          limit: 1,
+          sorts: [{ propertyName: 'hs_object_id', direction: 'DESCENDING' }],
+        }),
       }
     );
 
@@ -115,12 +132,8 @@ async function getContactByEmail(
     const data = await response.json();
     const contacts = data.results || [];
 
-    // Find contact by email
-    return (
-      contacts.find((contact: any) =>
-        contact.properties.email?.value === email
-      ) || null
-    );
+    // Return the first contact (or null if not found)
+    return contacts.length > 0 ? contacts[0] : null;
   } catch (error) {
     console.error('Error fetching contact from HubSpot:', error);
     return null;
@@ -135,18 +148,17 @@ async function createContact(
   apiKey: string
 ): Promise<{ success: boolean; vid?: number; error?: string }> {
   try {
-    const response = await fetch('https://api.hubapi.com/crm/v3/objects/contacts', {
+    const response = await fetchWithRetry('https://api.hubapi.com/crm/v3/objects/contacts', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        properties: properties.map(p => ({
-          objectTypeId: '0-1',
-          name: p.property,
-          value: p.value,
-        })),
+        properties: properties.reduce((acc, p) => ({
+          ...acc,
+          [p.property]: p.value,
+        }), {}),
       }),
     });
 
@@ -181,18 +193,17 @@ async function updateContact(
   apiKey: string
 ): Promise<{ success: boolean; vid?: number; error?: string }> {
   try {
-    const response = await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${vid}`, {
+    const response = await fetchWithRetry(`https://api.hubapi.com/crm/v3/objects/contacts/${vid}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        properties: properties.map(p => ({
-          objectTypeId: '0-1',
-          name: p.property,
-          value: p.value,
-        })),
+        properties: properties.reduce((acc, p) => ({
+          ...acc,
+          [p.property]: p.value,
+        }), {}),
       }),
     });
 
@@ -227,7 +238,7 @@ export async function addContactToList(
   try {
     const apiKey = getHubSpotApiKey();
 
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `https://api.hubapi.com/crm/v3/lists/${listId}/members`,
       {
         method: 'POST',
@@ -272,7 +283,7 @@ export async function createHubSpotDeal(data: {
   try {
     const apiKey = getHubSpotApiKey();
 
-    const response = await fetch('https://api.hubapi.com/crm/v3/objects/deals', {
+    const response = await fetchWithRetry('https://api.hubapi.com/crm/v3/objects/deals', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -336,7 +347,7 @@ export async function logActivityToHubSpot(data: {
     }
 
     // Create engagement
-    const response = await fetch('https://api.hubapi.com/crm/v3/objects/notes', {
+    const response = await fetchWithRetry('https://api.hubapi.com/crm/v3/objects/notes', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
