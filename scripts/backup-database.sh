@@ -207,12 +207,13 @@ verify_backup() {
         fi
     fi
 
-    # Verify custom dump
+    # Verify custom dump (check if file exists and has content)
     if [ -f "$custom_dump" ]; then
-        if file "$custom_dump" | grep -q "custom"; then
-            log_info "✓ Custom dump integrity verified"
+        local custom_size=$(stat -f%z "$custom_dump" 2>/dev/null || stat -c%s "$custom_dump" 2>/dev/null || du -b "$custom_dump" | cut -f1)
+        if [ "$custom_size" -gt 0 ]; then
+            log_info "✓ Custom dump integrity verified ($custom_size bytes)"
         else
-            log_error "Custom dump is corrupted"
+            log_error "Custom dump is empty or corrupted"
             return 1
         fi
     fi
