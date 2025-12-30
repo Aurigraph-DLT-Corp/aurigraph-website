@@ -1,0 +1,67 @@
+name: Website Deploy - Staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "lib/**"
+      - ".github/workflows/website-deploy-staging.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build for production
+        env:
+          NEXT_PUBLIC_SITE_URL: http://staging.aurigraph.io
+        run: npm run build
+
+      - name: Build Docker image
+        run: |
+          docker build -t aurigraph/website:staging-${{ github.sha }} .
+          docker tag aurigraph/website:staging-${{ github.sha }} aurigraph/website:staging-latest
+
+      - name: Deploy to staging
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_USER: ${{ secrets.STAGING_USER }}
+          STAGING_KEY: ${{ secrets.STAGING_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$STAGING_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh -i ~/.ssh/id_rsa $STAGING_USER@$STAGING_HOST "cd /opt/website && git pull origin main && docker-compose -f infrastructure/docker/docker-compose.staging.yml up -d"
+
+      - name: Health check
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://staging.aurigraph.io/health > /dev/null 2>&1; then
+              echo "✅ Website is healthy"
+              exit 0
+            fi
+            echo "Waiting for website to become healthy... ($i/30)"
+            sleep 5
+          done
+          echo "❌ Website failed to become healthy"
+          exit 1
+
+      - name: Slack notification
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: "Website staging deployment: ${{ job.status }}"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}

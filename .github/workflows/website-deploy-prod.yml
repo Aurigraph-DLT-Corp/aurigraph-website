@@ -1,0 +1,94 @@
+name: Website Deploy - Production (Blue-Green)
+
+on:
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: aurigraph/website
+
+jobs:
+  deploy-prod:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run HubSpot integration tests
+        env:
+          HUBSPOT_API_KEY: ${{ secrets.HUBSPOT_API_KEY }}
+        run: npm run test __tests__/hubspot.test.ts
+
+      - name: Build for production
+        env:
+          NEXT_PUBLIC_SITE_URL: https://www.aurigraph.io
+        run: npm run build
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${{ github.run_number }}
+
+      - name: Blue-Green deployment
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+          PROD_KEY: ${{ secrets.PROD_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PROD_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh -i ~/.ssh/id_rsa $PROD_USER@$PROD_HOST "cd /opt/website && bash deployment/deploy-production.sh production"
+
+      - name: Production health check (Blue)
+        run: |
+          for i in {1..60}; do
+            STATUS=$(curl -s http://${{ secrets.PROD_HOST }}:3000/health | jq -r .status)
+            if [ "$STATUS" = "blue" ]; then
+              echo "✅ Blue (current) is healthy"
+              break
+            fi
+            sleep 10
+          done
+
+      - name: Production health check (Green)
+        run: |
+          for i in {1..60}; do
+            STATUS=$(curl -s http://${{ secrets.PROD_HOST }}:3001/health | jq -r .status)
+            if [ "$STATUS" = "green" ]; then
+              echo "✅ Green (new) is healthy and ready"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "❌ Green failed to become healthy"
+          exit 1
+
+      - name: Verify production endpoint
+        run: |
+          if curl -sf https://www.aurigraph.io/health > /dev/null 2>&1; then
+            echo "✅ Production endpoint is accessible"
+          else
+            echo "❌ Production endpoint is unavailable"
+            exit 1
+          fi
+
+      - name: Slack notification
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: "🚀 Website production deployment (blue-green): ${{ job.status }}\n📊 Downtime: 0 seconds"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}

@@ -1,0 +1,67 @@
+name: Website Lighthouse Audit
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'  # Weekly at 3 AM Sunday
+  workflow_dispatch:
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build for production
+        env:
+          NEXT_PUBLIC_SITE_URL: https://www.aurigraph.io
+        run: npm run build
+
+      - name: Run Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          configPath: ./lighthouserc.json
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+
+      - name: Upload results artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: lighthouse-results
+          path: .lighthouseci
+          retention-days: 90
+
+      - name: Parse and log scores
+        run: |
+          echo "Performance Audit Results:"
+          ls -la .lighthouseci/uploads/ || echo "Audit artifacts not found"
+
+      - name: Create performance report
+        run: |
+          mkdir -p reports
+          echo "# Weekly Lighthouse Report" > reports/lighthouse-${{ github.run_number }}.md
+          echo "- Audit Date: $(date)" >> reports/lighthouse-${{ github.run_number }}.md
+          echo "- Status: ${{ job.status }}" >> reports/lighthouse-${{ github.run_number }}.md
+
+      - name: Upload performance report
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-reports
+          path: reports/
+          retention-days: 180
+
+      - name: Slack notification
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: "📊 Website Lighthouse audit completed - Performance audit available in artifacts"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
