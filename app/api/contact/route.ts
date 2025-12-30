@@ -76,8 +76,8 @@ export async function POST(request: ContactFormRequest) {
       `INSERT INTO website.form_analytics (form_name, submission_date, total_submissions, successful_submissions)
        VALUES ('contact', CURRENT_DATE, 1, 1)
        ON CONFLICT (form_name, submission_date) DO UPDATE SET
-         total_submissions = total_submissions + 1,
-         successful_submissions = successful_submissions + 1,
+         total_submissions = form_analytics.total_submissions + 1,
+         successful_submissions = form_analytics.successful_submissions + 1,
          updated_at = CURRENT_TIMESTAMP`
     );
 
@@ -128,8 +128,8 @@ export async function POST(request: ContactFormRequest) {
           `INSERT INTO website.form_analytics (form_name, submission_date, total_submissions, failed_submissions)
            VALUES ('contact', CURRENT_DATE, 1, 1)
            ON CONFLICT (form_name, submission_date) DO UPDATE SET
-             total_submissions = total_submissions + 1,
-             failed_submissions = failed_submissions + 1,
+             total_submissions = form_analytics.total_submissions + 1,
+             failed_submissions = form_analytics.failed_submissions + 1,
              updated_at = CURRENT_TIMESTAMP`
         );
       } catch (analyticsError) {
