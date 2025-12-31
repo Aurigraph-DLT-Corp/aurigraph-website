@@ -18,10 +18,28 @@ out/
 *~
 .DS_Store
 
-# Environment
+# Environment & Secrets
 .env
 .env.local
 .env.*.local
+.env.*.local.secret
+.env.production.local
+.env.test.local
+
+# Secrets & Credentials
+.secrets/
+**/secrets.json
+**/*.key
+**/*.pem
+**/*.pfx
+*.key.txt
+*.secret.txt
+
+# HubSpot & API Keys
+HUBSPOT_API_KEY
+HUBSPOT_PRIVATE_APP_ACCESS_TOKEN
+*hubspot*.env*
+docker-compose.override.yml
 
 # Testing
 coverage/
